@@ -55,6 +55,30 @@ export async function runQuery(sql) {
   return arrowToRows(result)
 }
 
+// executes the given SQL with pagination applied in the database;
+// returns an object with the current page of rows and the total count
+export async function runQueryPage(sql, page = 0, pageSize = 50) {
+  const conn = await getConnection()
+
+  // ensure numeric inputs; protect against NaN/strings
+  page = Number(page)
+  if (!Number.isFinite(page) || page < 0) page = 0
+  pageSize = Number(pageSize)
+  if (!Number.isFinite(pageSize) || pageSize <= 0) pageSize = 50
+
+  // wrap the provided SQL so that COUNT(*) respects filters/joins/etc
+  const countSql = `SELECT COUNT(*) AS cnt FROM (${sql})`;
+  const countRes = await conn.query(countSql);
+  const total = arrowToRows(countRes)[0].cnt;
+
+  const offset = page * pageSize;
+  const pageSql = `${sql} LIMIT ${pageSize} OFFSET ${offset}`;
+  const pageRes = await conn.query(pageSql);
+  const rows = arrowToRows(pageRes);
+
+  return { rows, total };
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function arrowToRows(table) {
