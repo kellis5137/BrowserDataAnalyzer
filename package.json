@@ -1,5 +1,6 @@
 {
   "name": "browserdataanalizer",
+  "homepage": "https://github.com/kellis5137/BrowserDataAnalyzer",
   "private": true,
   "version": "0.0.0",
   "type": "module",
