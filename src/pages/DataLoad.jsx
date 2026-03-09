@@ -10,6 +10,7 @@ function toTableName(filename) {
 }
 
 function TablePreview({ tableName, dataset, onRemove }) {
+  const queryTableName = dataset.filename
   const [expanded, setExpanded] = useState(true)
   const [rows, setRows] = useState([])
   const [totalRows, setTotalRows] = useState(0)
@@ -17,20 +18,23 @@ function TablePreview({ tableName, dataset, onRemove }) {
   const pageSize = 25
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [sortModel, setSortModel] = useState([])
+  const [selectedCol, setSelectedCol] = useState('')
+  const [selectedSort, setSelectedSort] = useState('asc')
 
-  useEffect(() => {
-    handleRun(0)
-  }, [handleRun])
-
-  const handleRun = useCallback(async (newPage = 0) => {
-    if (!tableName) return
+  const handleRun = useCallback(async (newPage = 0, sortModel = []) => {
+    if (!queryTableName) return
     newPage = Number(newPage)
     if (!Number.isFinite(newPage) || newPage < 0) newPage = 0
 
     setLoading(true)
     setError('')
     try {
-      const query = `SELECT * FROM "${tableName}"`
+      let query = `SELECT * FROM "${queryTableName}"`
+      if (sortModel.length > 0) {
+        const orderBy = sortModel.map(s => `"${s.colId.replace(/"/g, '""')}" ${s.sort.toUpperCase()}`).join(', ')
+        query += ` ORDER BY ${orderBy}`
+      }
       const { rows: fetchedRows, total } = await runQueryPage(query, newPage, pageSize)
       setRows(fetchedRows)
       setTotalRows(total)
@@ -42,10 +46,22 @@ function TablePreview({ tableName, dataset, onRemove }) {
     } finally {
       setLoading(false)
     }
-  }, [tableName])
+  }, [queryTableName, sortModel])
+
+  useEffect(() => {
+    handleRun(0, sortModel)
+  }, [handleRun])
+
+  useEffect(() => {
+    if (selectedCol) {
+      const newSortModel = [{ colId: selectedCol, sort: selectedSort }]
+      setSortModel(newSortModel)
+      handleRun(0, newSortModel)
+    }
+  }, [selectedCol, selectedSort])
 
   const colDefs = rows.length > 0
-    ? Object.keys(rows[0]).map(field => ({ field, filter: true, sortable: true }))
+    ? Object.keys(rows[0]).map(field => ({ field, filter: true, sortable: false, resizable: true }))
     : []
 
   return (
@@ -72,7 +88,7 @@ function TablePreview({ tableName, dataset, onRemove }) {
                 {rows.length.toLocaleString()} of {totalRows.toLocaleString()} rows
               </p>
               <div className="pager">
-                <button onClick={() => handleRun(Math.max(page - 1, 0))} disabled={page === 0 || loading}>
+                <button onClick={() => handleRun(Math.max(page - 1, 0), sortModel)} disabled={page === 0 || loading}>
                   ‹ Prev
                 </button>
                 <span>
@@ -81,7 +97,7 @@ function TablePreview({ tableName, dataset, onRemove }) {
                 {Math.ceil(totalRows / pageSize) > 1 && (
                   <select
                     value={page + 1}
-                    onChange={e => handleRun(parseInt(e.target.value) - 1)}
+                    onChange={e => handleRun(parseInt(e.target.value) - 1, sortModel)}
                     style={{ marginLeft: '10px', marginRight: '10px' }}
                     disabled={loading}
                   >
@@ -93,13 +109,28 @@ function TablePreview({ tableName, dataset, onRemove }) {
                   </select>
                 )}
                 <button
-                  onClick={() => handleRun(page + 1)}
+                  onClick={() => handleRun(page + 1, sortModel)}
                   disabled={(page + 1) * pageSize >= totalRows || loading}
                 >
                   Next ›
                 </button>
               </div>
             </>
+          )}
+          {rows.length > 0 && (
+            <div className="sort-controls">
+              <label>Sort by:</label>
+              <select value={selectedCol} onChange={e => setSelectedCol(e.target.value)}>
+                <option value="">-- Select Column --</option>
+                {Object.keys(rows[0]).map(col => (
+                  <option key={col} value={col}>{col}</option>
+                ))}
+              </select>
+              <select value={selectedSort} onChange={e => setSelectedSort(e.target.value)}>
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
           )}
           <div className="grid-container ag-theme-alpine-dark">
             <AgGridReact

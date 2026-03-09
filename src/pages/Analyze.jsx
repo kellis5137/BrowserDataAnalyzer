@@ -22,6 +22,8 @@ export default function Analyze({ datasets }) {
   const [running,     setRunning]     = useState(false)
   const [dbReady,     setDbReady]     = useState(false)
   const [sortModel, setSortModel] = useState([])
+  const [selectedCol, setSelectedCol] = useState('')
+  const [selectedSort, setSelectedSort] = useState('asc')
 
   // pre-warm DuckDB so the first query isn't slow
   useEffect(() => {
@@ -41,7 +43,16 @@ export default function Analyze({ datasets }) {
   useEffect(() => {
     setPage(0)
     setSortModel([])
+    setSelectedCol('')
   }, [query])
+
+  useEffect(() => {
+    if (selectedCol) {
+      const newSortModel = [{ colId: selectedCol, sort: selectedSort }]
+      setSortModel(newSortModel)
+      handleRun(0, newSortModel)
+    }
+  }, [selectedCol, selectedSort])
 
   async function handleRun(newPage = 0, sort = sortModel) {
     if (!query.trim()) return
@@ -53,7 +64,7 @@ export default function Analyze({ datasets }) {
     try {
       let fullSql = query
       if (sort.length > 0) {
-        const orderBy = sort.map(s => `"${s.colId}" ${s.sort.toUpperCase()}`).join(', ')
+        const orderBy = sort.map(s => `"${s.colId.replace(/"/g, '""')}" ${s.sort.toUpperCase()}`).join(', ')
         fullSql += ` ORDER BY ${orderBy}`
       }
       const { rows, total } = await runQueryPage(fullSql, newPage, pageSize)
@@ -73,14 +84,8 @@ export default function Analyze({ datasets }) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleRun()
   }
 
-  const onSortChanged = (params) => {
-    const newSortModel = params.api.getSortModel()
-    setSortModel(newSortModel)
-    handleRun(page, newSortModel)
-  }
-
   const colDefs = rows.length > 0
-    ? Object.keys(rows[0]).map(field => ({ field, filter: true, sortable: true, resizable: true }))
+    ? Object.keys(rows[0]).map(field => ({ field, filter: true, sortable: false, resizable: true }))
     : []
 
   return (
@@ -134,7 +139,7 @@ export default function Analyze({ datasets }) {
             {rows.length.toLocaleString()} of {totalRows.toLocaleString()} rows
           </p>
           <div className="pager">
-            <button onClick={() => handleRun(Math.max(page - 1, 0))} disabled={page === 0}>
+            <button onClick={() => handleRun(Math.max(page - 1, 0), sortModel)} disabled={page === 0}>
               ‹ Prev
             </button>
             <span>
@@ -143,7 +148,7 @@ export default function Analyze({ datasets }) {
             {Math.ceil(totalRows / pageSize) > 1 && (
               <select
                 value={page + 1}
-                onChange={e => handleRun(parseInt(e.target.value) - 1)}
+                onChange={e => handleRun(parseInt(e.target.value) - 1, sortModel)}
                 style={{ marginLeft: '10px', marginRight: '10px' }}
               >
                 {Array.from({ length: Math.ceil(totalRows / pageSize) }, (_, i) => i + 1).map(p => (
@@ -154,17 +159,31 @@ export default function Analyze({ datasets }) {
               </select>
             )}
             <button
-              onClick={() => handleRun(page + 1)}
+              onClick={() => handleRun(page + 1, sortModel)}
               disabled={(page + 1) * pageSize >= totalRows}
             >
               Next ›
             </button>
           </div>
+          {rows.length > 0 && (
+            <div className="sort-controls">
+              <label>Sort by:</label>
+              <select value={selectedCol} onChange={e => setSelectedCol(e.target.value)}>
+                <option value="">-- Select Column --</option>
+                {Object.keys(rows[0]).map(col => (
+                  <option key={col} value={col}>{col}</option>
+                ))}
+              </select>
+              <select value={selectedSort} onChange={e => setSelectedSort(e.target.value)}>
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
+          )}
           <div className="grid-container ag-theme-alpine-dark">
             <AgGridReact
               rowData={rows}
               columnDefs={colDefs}
-              onSortChanged={onSortChanged}
             />
           </div>
         </>
